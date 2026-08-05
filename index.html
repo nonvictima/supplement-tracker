@@ -8,19 +8,26 @@
   body { font-family: -apple-system, sans-serif; background:#111; color:#eee; margin:0; padding:16px; }
   h1 { font-size:1.4em; text-align:center; }
   h2 { margin-top:24px; border-bottom:1px solid #444; padding-bottom:4px; }
+  h3 { margin:16px 0 4px; color:#bbb; font-size:1em; }
   label { display:flex; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid #222; font-size:1em; }
   input[type=checkbox] { width:22px; height:22px; }
   .done { text-decoration: line-through; color:#888; }
   #bar-container { background:#333; border-radius:8px; overflow:hidden; height:16px; margin:10px 0; }
   #bar { background:#4caf50; height:100%; width:0%; transition:width .3s; }
   button { margin-top:20px; width:100%; padding:12px; font-size:1em; background:#c0392b; color:#fff; border:none; border-radius:8px; }
+  .today-tag { color:#4caf50; font-size:0.85em; margin-left:6px; }
 </style>
 </head>
 <body>
 <h1>Daily Supplement Tracker</h1>
 <div id="bar-container"><div id="bar"></div></div>
 <div id="app"></div>
+
+<h2>Weekly Add-Ins \ud83d\udcc5</h2>
+<div id="weekly"></div>
+
 <button onclick="resetToday()">Reset Today's Checklist</button>
+<button onclick="resetWeek()" style="background:#555;">Reset This Week's Add-Ins</button>
 
 <script>
 const schedule = {
@@ -40,15 +47,23 @@ const schedule = {
   ]
 };
 
-const weeklyAddIns = {
-  2: ["ErinaMax (Lion's Mane) - Tuesday boost"],
-  4: ["Ashwagandha - Thursday boost", "ErinaMax (Lion's Mane) - Thursday boost"],
-  0: ["Multivitamin - Sunday reset", "Vitamin D - Sunday reset", "Calcium - Sunday reset"]
+// dow: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+const weeklySchedule = {
+  "Tuesday (Mid-Week Boost)": { dow: 2, items: ["ErinaMax (Lion's Mane)"] },
+  "Thursday (Mid-Week Boost)": { dow: 4, items: ["Ashwagandha", "ErinaMax (Lion's Mane)"] },
+  "Sunday (Weekly Reset - take with food)": { dow: 0, items: ["Multivitamin", "Vitamin D", "Calcium"] }
 };
 
 function todayKey() {
   const d = new Date();
   return d.toISOString().slice(0,10);
+}
+
+function weekKey() {
+  const d = new Date();
+  const onejan = new Date(d.getFullYear(),0,1);
+  const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay()+1)/7);
+  return "supp_week_" + d.getFullYear() + "_" + week;
 }
 
 function getState() {
@@ -61,9 +76,22 @@ function saveState(state) {
   localStorage.setItem(key, JSON.stringify(state));
 }
 
+function getWeekState() {
+  return JSON.parse(localStorage.getItem(weekKey()) || "{}");
+}
+
+function saveWeekState(state) {
+  localStorage.setItem(weekKey(), JSON.stringify(state));
+}
+
 function resetToday() {
   const key = "supp_" + todayKey();
   localStorage.removeItem(key);
+  render();
+}
+
+function resetWeek() {
+  localStorage.removeItem(weekKey());
   render();
 }
 
@@ -73,17 +101,11 @@ function render() {
   const state = getState();
   let total = 0, checked = 0;
 
-  const dow = new Date().getDay();
-  const fullSchedule = Object.assign({}, schedule);
-  if (weeklyAddIns[dow]) {
-    fullSchedule["Today's Weekly Add-Ins \ud83d\udcc5"] = weeklyAddIns[dow];
-  }
-
-  for (const section in fullSchedule) {
+  for (const section in schedule) {
     const h2 = document.createElement("h2");
     h2.textContent = section;
     app.appendChild(h2);
-    fullSchedule[section].forEach((item, idx) => {
+    schedule[section].forEach((item, idx) => {
       const id = section + "_" + idx;
       total++;
       const lbl = document.createElement("label");
@@ -107,6 +129,47 @@ function render() {
 
   const pct = total ? Math.round((checked/total)*100) : 0;
   document.getElementById("bar").style.width = pct + "%";
+
+  renderWeekly();
+}
+
+function renderWeekly() {
+  const weekly = document.getElementById("weekly");
+  weekly.innerHTML = "";
+  const wstate = getWeekState();
+  const todayDow = new Date().getDay();
+
+  for (const dayLabel in weeklySchedule) {
+    const entry = weeklySchedule[dayLabel];
+    const h3 = document.createElement("h3");
+    h3.textContent = dayLabel;
+    if (entry.dow === todayDow) {
+      const tag = document.createElement("span");
+      tag.className = "today-tag";
+      tag.textContent = "(Today)";
+      h3.appendChild(tag);
+    }
+    weekly.appendChild(h3);
+    entry.items.forEach((item, idx) => {
+      const id = dayLabel + "_" + idx;
+      const lbl = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!wstate[id];
+      if (cb.checked) { lbl.classList.add("done"); }
+      cb.onchange = () => {
+        const s = getWeekState();
+        s[id] = cb.checked;
+        saveWeekState(s);
+        renderWeekly();
+      };
+      const span = document.createElement("span");
+      span.textContent = item;
+      lbl.appendChild(cb);
+      lbl.appendChild(span);
+      weekly.appendChild(lbl);
+    });
+  }
 }
 
 render();
